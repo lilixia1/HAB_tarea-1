@@ -48,17 +48,45 @@ def map_with_mygene(genes, species) -> pd.DataFrame:
     """
     mg = mygene.MyGeneInfo()
     fields = "symbol,name,entrezgene,ensembl.gene,summary,alias,taxid"
-    res = mg.querymany(
+    df = mg.querymany(
         genes,
         scopes="symbol,alias,ensemblgene,entrezgene",
         fields=fields,
         species=species,
         as_dataframe=True,
-        df_index=True,
         verbose=False,
     )
-    
-    return res
 
-datos = map_with_mygene(genes_norm, especie)
-print(datos)
+    # Ya tenemos el mapeo, hay que aplanar los datos
+    # Renombramos etiquetas a nombres más consistentes
+    df = df.rename(columns={
+        "symbol": "symbol",
+        "name": "gene_name",
+        "entrezgene": "entrez_id",
+        "ensembl.gene": "ensembl_id",
+        "summary": "summary",
+        "alias": "aliases",
+        "taxid": "taxid",
+    })
+
+    # Aplanar listas/dicts en alias/ensembl
+    def flatten(x):
+        if isinstance(x, list):
+            return ";".join(sorted(set(map(str, x))))
+        if isinstance(x, dict) and "gene" in x:
+            return x["gene"]
+        return x
+
+    df["ensembl_id"] = df["ensembl_id"].map(flatten)
+    df["aliases"] = df["aliases"].map(flatten)
+
+    # Orden estético
+    if "symbol" in df.columns:
+        df = df.sort_values("symbol")
+
+    # Lista de símbolos oficiales únicos para usar en enriquecimiento
+    normalized_symbols = df["symbol"].dropna().unique().tolist()
+
+    return df, normalized_symbols
+
+datos, ids = map_with_mygene(genes_norm, especie)
